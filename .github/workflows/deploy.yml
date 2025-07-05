@@ -1,43 +1,35 @@
+name: Deploy Flask App
 
----
-- name: Install and deploy Flask app in Docker
-  hosts: ec2
-  become: true
+on:
+  push:
+    branches:
+      - main  # or "master" if you're using that
 
-  vars:
-    app_dir: /home/ec2-user/flask_app
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-  tasks:
-    - name: Create app directory
-      file:
-        path: "{{ app_dir }}"
-        state: directory
-        owner: ec2-user
-        group: ec2-user
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Copy application files
-      copy:
-        src: files/
-        dest: "{{ app_dir }}"
-        owner: ec2-user
-        group: ec2-user
-        mode: '0755'
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-    - name: Build Docker image
-      command: docker build -t flask-app .
-      args:
-        chdir: "{{ app_dir }}"
-      become: true
+      - name: Copy files to EC2
+        run: |
+          scp -r flask_app/* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ec2-user/flask_app/
 
-    - name: Stop old container (if running)
-      shell: docker ps -q --filter "name=flask-app" | xargs -r docker stop
-      ignore_errors: yes
-
-    - name: Remove old container (if exists)
-      shell: docker ps -aq --filter "name=flask-app" | xargs -r docker rm
-      ignore_errors: yes
-
-    - name: Run Flask Docker container
-      command: docker run -d -p 80:80 --name flask-app flask-app
-
-
+      - name: Deploy app via SSH
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            cd /home/ec2-user/flask_app
+            docker stop flask-app || true
+            docker rm flask-app || true
+            docker build -t flask-app .
+            docker run -d -p 80:80 --name flask-app flask-app
+          EOF
