@@ -6,8 +6,8 @@ WORKDIR /app
 
 # Copy app.py, templates, and static folders into container
 COPY app.py /app/
-COPY flask_app/templates /app/templates
-COPY flask_app/static /app/static
+COPY templates /app/templates
+COPY static /app/static
 
 # Install Flask
 RUN pip install flask
